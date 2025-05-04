@@ -1,0 +1,54 @@
+name: Sync Remote Branches
+
+on:
+  workflow_dispatch:
+    inputs:
+      pattern:
+        description: 'Branch pattern to sync (e.g., feature/*)'
+        required: false
+        default: 'feature/*'
+      dry_run:
+        description: 'Only list changes without applying'
+        required: false
+        default: 'false'
+      force:
+        description: 'Force checkout even with local changes'
+        required: false
+        default: 'false'
+      verbose:
+        description: 'Enable verbose output'
+        required: false
+        default: 'false'
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Fetch all branches
+
+      - name: 🔐 Setup SSH (if key is present)
+        if: secrets.SSH_PRIVATE_KEY != ''
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan github.com >> ~/.ssh/known_hosts
+          git config --global url."git@github.com:".insteadOf "https://github.com/"
+
+      - name: 🔐 Setup PAT (if token is present)
+        if: secrets.PAT_TOKEN != ''
+        run: |
+          git remote set-url origin https://x-access-token:${{ secrets.PAT_TOKEN }}@github.com/${{ github.repository }}
+
+      - name: 🚀 Run sync script
+        run: |
+          chmod +x scripts/sync-branches.sh
+          ./scripts/sync-branches.sh \
+            --pattern "${{ github.event.inputs.pattern }}" \
+            $([[ "${{ github.event.inputs.dry_run }}" == "true" ]] && echo "--dry-run") \
+            $([[ "${{ github.event.inputs.force }}" == "true" ]] && echo "--force") \
+            $([[ "${{ github.event.inputs.verbose }}" == "true" ]] && echo "--verbose")
